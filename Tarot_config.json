@@ -1,0 +1,40 @@
+{
+    "music_switch": false,
+    "setting": {
+        "背景音量": 0
+    },
+    "name": "Edwad_过客",
+    "skin": {
+        "ace": "bili",
+        "big": "bili",
+        "small": "rider",
+        "back": "bili"
+    },
+    "cards_min": 4,
+    "cards_max": 11,
+    "start_fight": 0,
+    "over_game": 0,
+    "turn_card_time": [0.8,2],
+    "version": 0.1,
+    "identity": [
+        "权杖",
+        "宝剑",
+        "圣杯",
+        "星币",
+        "宝剑03",
+        "宝剑骑士",
+        "星币02",
+        "圣杯05"
+    ],
+    "active_card": [
+        "01魔术师",
+        "06恋人",
+        "07战车",
+        "08力量",
+        "09隐者",
+        "11正义",
+        "13死亡",
+        "20审判",
+        "21世界"
+    ]
+}

@@ -118,10 +118,11 @@ class Text:
 
 
 class Player:
-    def __init__(self, name, identity_chosen=False,
-                 identity_card=None, is_identity_skill=False, is_active=False,
+    def __init__(self, name, identity_chosen=False, can_get = False,
+                 identity_card=None, is_active=False,
                  hand_cards=None, points=0, hand_card_pos=None, get_card=False,
-                 is_first=False, active_complete = False, gg =False
+                 is_first=False, turn_complete = False, gg =False, skill_complete = False,
+                 decide_complete = True
                  ):
         if hand_cards is None:
             hand_cards = []
@@ -129,29 +130,29 @@ class Player:
             hand_card_pos = [ww * 0.02, wh * 0.7]
         self.hand_cards = hand_cards
         self.gg = gg
-        self.active_complete = active_complete
+        self.can_get = can_get
+        self.turn_complete = turn_complete
+        self.decide_complete = decide_complete
+        self.skill_complete = skill_complete
         self.is_first = is_first
-        self.hand_card_pos = hand_card_pos
         self.name = name
         self.get_card = get_card
         self.hand_card_pos = hand_card_pos
         self.identity_chosen = identity_chosen
-        self.is_identity_skill = is_identity_skill
         self.is_active = is_active
         self.identity_card = identity_card
         self.hand_cards = hand_cards
         self.points = points
 
     def get_cards(self, chose_cards, chose_type):
-        if not self.get_card:
-            for c in chose_cards:
-                if c.card_types == chose_type and not c in cards['弃牌堆']:
-                    rect = g_rect(c)
-                    if self.name == 'Bot' or rect.collidepoint(pg.mouse.get_pos()):
-                        self.hand_cards.append(c)
-                        cards['弃牌堆'].append(c)
-                        print(self.name + '抽取了' + str(c.is_on) +'的' + c.card_id)
-                        break
+        for c in chose_cards:
+            if c.card_types == chose_type and not c in cards['弃牌堆']:
+                rect = g_rect(c)
+                if self.name == 'Bot' or rect.collidepoint(pg.mouse.get_pos()):
+                    self.hand_cards.append(c)
+                    cards['弃牌堆'].append(c)
+                    print(self.name + '抽取了' + str(c.is_on) +'的' + c.card_id)
+                    break
 
 
 class Button:
@@ -283,6 +284,24 @@ class Card(Button):
             img_show = cards['back'][0].imgs[0]
         screen.blit(transform_scale(img_show, self.width, self.height), (self.x, self.y))
 
+        # 绘制状态
+        ban_img_s = self.width * 0.75
+        ban_img_x, ban_img_y = self.x + self.width * 0.14, self.y + self.height * 0.035
+        ban_text_x, ban_text_y = self.x + self.width * 0.525, self.y + self.height * 0.277
+
+        if self.point_ban:
+            p_ban_text = Text(int(fr * 103), 'P', ban_text_x, ban_text_y, color=(0, 0, 0))
+            ban_img = transform_scale(img_ui['禁止.png'], ban_img_s, ban_img_s)
+            p_ban_text.draw()
+            screen.blit(ban_img, (ban_img_x, ban_img_y))
+
+        if self.effct_ban:
+            e_ban_text = Text(int(fr * 103), 'E', ban_text_x, ban_text_y + self.height * 0.5)
+            ban_img = transform_scale(img_ui['禁止.png'], ban_img_s, ban_img_s)
+            e_ban_text.draw()
+            screen.blit(ban_img, (ban_img_x, ban_img_y + self.height * 0.5))
+
+
 # 创建开局计时器
 start_game = None
 
@@ -368,6 +387,7 @@ gui = 'home'
 active_card = None
 slide_bars_active = {}
 start_gf = False
+chosed_card = None
 game_winner = None
 gf_winner = None
 for i in data['setting'].keys():
@@ -586,10 +606,13 @@ while True:
                     i.points = 0
                     for opened_cards in i.hand_cards:
                         if opened_cards.is_open:
-                            if opened_cards.is_on:
-                                i.points += int(opened_cards.points)
+                            if opened_cards.point_ban:
+                                i.points += 0
                             else:
-                                i.points -= int(opened_cards.points)
+                                if opened_cards.is_on:
+                                    i.points += int(opened_cards.points)
+                                else:
+                                    i.points -= int(opened_cards.points)
 
                     # 绘制分数板
                     text_points = Text(int(45 * fr), str(i.points), id_pos[0], id_pos[1])
@@ -633,8 +656,7 @@ while True:
                 text_message.draw()
 
                 # 机器人拿手牌
-                if len(Player_T.hand_cards) >= data['cards_min']:
-                    Player_T.get_card = True
+                if Player_T.get_card:
                     messages = '轮到对方抽牌'
                     if not Bot.get_card:
                         if len(Bot.hand_cards) < data['cards_min']:
@@ -646,10 +668,12 @@ while True:
                             Bot.get_card = True
                     else:
                         # 双方都拿完手牌
+
+                        # 如果没有先手
                         if not Bot.is_first and not Player_T.is_first:
                             messages = '猜拳定先手'
                             Bot_hand = random.choice([0, 1, 2])
-                            if not gf_winner != None:
+                            if gf_winner == None:
                                 B_size = ww * 0.1
                                 B_pos = [ww * 0.235, wh * 0.45]
                                 buttons_name = ['石头', '剪刀', '布']
@@ -689,7 +713,9 @@ while True:
                                 # 猜拳完毕
                                 if gf_winner == 2:
                                     Bot.is_first = True
+                                    Bot.is_active = True
                                 else:
+                                    Player_T.is_active = True
                                     Player_T.is_first = True
                         else:
                             # 判断游戏是否结束
@@ -719,190 +745,298 @@ while True:
                                         over_game = time.time()
 
                                     # 更改行动状态
-                                    if i.is_first:
+                                    if i.is_active:
                                         # 更改提示
                                         if i == Bot:
                                             messages = '敌方行动回合'
                                         else:
                                             messages = '你的行动回合'
-                                        if i.active_complete or i == Bot:
-                                            i.is_first = False
-                                            i.is_active = False
-                                            i.active_complete = False
 
-                                            # 将另一个行动回合开启,关闭当前行动回合
-                                            for j in names:
-                                                if j != i:
-                                                    j.is_first = True
-                                                    j.is_active = True
-                                            if i == Bot:
-                                                # 如果是机器人
-                                                for closed in Bot.hand_cards:
-                                                    if not closed.is_open:
-                                                        closed.is_open = not closed.is_open
-                                                        active_card = closed
-                                                        break
+                                        if i.decide_complete:
+                                            # 判定完成
+                                            if i.turn_complete:
+                                                # 判定完毕并且翻完牌后执行
+                                                if i.skill_complete:
+                                                    # 判定完毕翻完牌并且技能释放结束
+                                                    i.is_active = False
+                                                    i.turn_complete = False
+                                                    i.skill_complete = False
+                                                    # 将另一个行动回合开启,关闭当前行动回合
+                                                    for j in names:
+                                                        if j != i:
+                                                            j.is_active = True
+
+                                                elif (active_card and
+                                                      i.skill_complete == False and
+                                                     active_card.effct_ban == False):
+                                                    # 判定完毕翻完牌但技能释放中
+                                                    if active_card.is_used == False:
+                                                        for ey in names:
+                                                            if ey != i:
+                                                                enemy = ey
+                                                        c_name = active_card.card_id[0:2]
+
+                                                        # 愚者即赢
+                                                        if c_name == '00':
+                                                            if active_card.is_on:
+                                                                game_winner = i
+                                                            else:
+                                                                game_winner = enemy
+                                                            over_game = time.time()
+                                                            i.skill_complete = True
+                                                            active_card.is_used = True
+
+                                                        # 魔术师拿别人一张牌(任意)
+                                                        elif c_name == '01':
+                                                            if i == Bot:
+                                                                if active_card.is_on:
+                                                                    messages = '敌人拿你一张牌'
+                                                                    steal_card = random.choice(Player_T.hand_cards)
+                                                                    Bot.hand_cards.append(steal_card)
+                                                                    Player_T.hand_cards.remove(steal_card)
+                                                                    i.skill_complete = True
+                                                                    active_card.is_used = True
+                                                                else:
+                                                                    messages = '你拿对方一张牌'
+                                                                    if chosed_card == None:
+                                                                        chosed_card = True
+                                                                    elif chosed_card == True:
+                                                                        pass
+                                                                    else:
+                                                                        Player_T.hand_cards.append(chosed_card)
+                                                                        Bot.hand_cards.remove(chosed_card)
+                                                                        i.skill_complete = True
+                                                                        active_card.is_used = True
+                                                                        chosed_card = None
+
+                                                            else:
+                                                                if active_card.is_on:
+                                                                    messages = '你拿对方一张牌'
+                                                                    if chosed_card == None:
+                                                                        chosed_card = True
+                                                                    elif chosed_card == True:
+                                                                        pass
+                                                                    else:
+                                                                        Player_T.hand_cards.append(chosed_card)
+                                                                        Bot.hand_cards.remove(chosed_card)
+                                                                        i.skill_complete = True
+                                                                        active_card.is_used = True
+                                                                        chosed_card = None
+                                                                else:
+                                                                    messages = '敌人拿你一张牌'
+                                                                    steal_card = random.choice(Player_T.hand_cards)
+                                                                    Bot.hand_cards.append(steal_card)
+                                                                    Player_T.hand_cards.remove(steal_card)
+                                                                    active_card.is_used = True
+                                                                    i.skill_complete = True
+
+                                                        # 女祭司 使即时发动的技能延迟到结束时发动
+                                                        elif c_name == '02':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        # 皇后 多摸一张手牌
+                                                        elif c_name == '03':
+                                                            if i == Bot:
+                                                                if active_card.is_on:
+                                                                    messages = '敌方抽张大阿卡纳牌'
+                                                                    # 机器人拿到皇后
+                                                                    Bot.get_cards(washed_cards, '大阿卡纳')
+                                                                    i.skill_complete = True
+                                                                    active_card.is_used = True
+                                                                else:
+                                                                    messages = '请抽张阿卡纳牌'
+                                                                    if Player_T.can_get == False:
+                                                                        Player_T.can_get = True
+                                                                    elif Player_T.can_get == 'OK':
+                                                                        Player_T.can_get = False
+                                                                        i.skill_complete = True
+                                                                        active_card.is_used = True
+                                                            else:
+                                                                if active_card.is_on:
+                                                                    messages = '请抽张大阿卡纳牌'
+                                                                    if i.can_get == False:
+                                                                        i.can_get = True
+                                                                    elif i.can_get == 'OK':
+                                                                        i.can_get = False
+                                                                        i.skill_complete = True
+                                                                        active_card.is_used = True
+                                                                else:
+                                                                    messages = '敌方抽张大阿卡纳牌'
+                                                                    # 机器人拿到皇后
+                                                                    Bot.get_cards(washed_cards, '大阿卡纳')
+                                                                    i.skill_complete = True
+                                                                    active_card.is_used = True
+
+                                                        elif c_name == '04':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '05':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '06':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '07':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '08':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '09':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        # 命运之轮重洗手牌
+                                                        elif c_name == '10':
+                                                            # 判断作用对象
+                                                            if active_card.is_on:
+                                                                skill_ob = i
+                                                            else:
+                                                                skill_ob = enemy
+                                                            # 重置对象手牌状态
+                                                            for wheel in skill_ob.hand_cards:
+                                                                wheel.is_open = False
+                                                                wheel.is_used = False
+                                                                cards['弃牌堆'].remove(wheel)
+                                                            skill_ob.hand_cards = []
+                                                            skill_ob.get_card = False
+
+                                                            # 重置对象的结束状态
+                                                            skill_ob.gg = False
+
+                                                            i.skill_complete = True
+                                                            if skill_ob == enemy:
+                                                                active_card.is_used = True
+
+                                                        elif c_name == '11':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '12':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '13':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '14':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '15':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '16':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '17':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '18':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '19':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        elif c_name == '20':
+                                                            if active_card.is_on:
+                                                                messages = '禁用对方一张牌点数'
+                                                            else:
+                                                                messages = '禁用我方一张牌点数'
+                                                            i.skill_complete = True
+
+                                                        # 世界 反转所有牌
+                                                        elif c_name == '21':
+                                                            if active_card.is_on:
+                                                                pass
+                                                            else:
+                                                                pass
+                                                            i.skill_complete = True
+
+                                                        else:
+                                                            pass
+                                                elif active_card.effct_ban:
+                                                    # 判定完翻完牌但牌技能被禁
+                                                    i.skill_complete = True
+
+                                                else:
+                                                    # 判定完翻完牌但没有技能牌
+                                                    pass
                                             else:
-                                                pass
-
-                                            # 卡牌技能判断
-                                            if active_card:
-                                                print(active_card.card_id)
-                                                if not active_card.is_used:
-                                                    for ey in names:
-                                                        if ey != i:
-                                                            enemy = ey
-                                                    c_name = active_card.card_id[0:2]
-
-                                                    # 愚者即赢
-                                                    if c_name == '00':
-                                                        if active_card.is_on:
-                                                            game_winner = i
-                                                        else:
-                                                            game_winner = enemy
-                                                        over_game = time.time()
-
-                                                    # 魔术师拿别人一张牌(任意)
-                                                    elif c_name == '01':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '02':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '03':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '04':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '05':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '06':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '07':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '08':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '09':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    # 命运之轮重洗手牌
-                                                    elif c_name == '10':
-                                                        # 判断作用对象
-                                                        if active_card.is_on:
-                                                            skill_ob = i
-                                                        else:
-                                                            skill_ob = enemy
-                                                        # 重置对象手牌状态
-                                                        for wheel in skill_ob.hand_cards:
-                                                            wheel.is_open = False
-                                                            wheel.is_used = False
-                                                            cards['弃牌堆'].remove(wheel)
-                                                        skill_ob.hand_cards = []
-                                                        skill_ob.get_card = False
-
-                                                    elif c_name == '11':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '12':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '13':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '14':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '15':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '16':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '17':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '18':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '19':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '20':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    elif c_name == '21':
-                                                        if active_card.is_on:
-                                                            pass
-                                                        else:
-                                                            pass
-
-                                                    else:
-                                                        pass
-
+                                                # 判定完毕但是没翻牌
+                                                if i == Bot:
+                                                    # 如果是机器人
+                                                    for closed in Bot.hand_cards:
+                                                        if not closed.is_open:
+                                                            closed.is_open = not closed.is_open
+                                                            active_card = closed
+                                                            break
+                                                    i.turn_complete = True
                                         else:
-                                            i.is_active = True
+                                            # 判定未结束
+                                            pass
+
+
 
         else:
             pass
@@ -1117,11 +1251,12 @@ while True:
             elif gui == 'fighting':
                 washed_cards = wash_cards(cards['大阿卡纳'])
 
-                # 摸身份牌
+                # 摸初始牌
                 if not Player_T.get_card:
                     Player_T.get_cards(washed_cards, '大阿卡纳')
-                    if data['cards_min'] - 1 == len(Player_T.hand_cards):
+                    if data['cards_min'] == len(Player_T.hand_cards):
                         start_game = time.time()
+                        Player_T.get_card = True
 
                 else:
                     # 猜拳
@@ -1136,14 +1271,28 @@ while True:
                                     player_chosed = player_chose
                                     over_gf = time.time()
                     # 翻牌
-                    if Player_T.is_active and Player_T.is_first:
+                    if Player_T.is_active and Player_T.can_get == False:
                         for i in cards['大阿卡纳']:
                             if i in Player_T.hand_cards:
                                 turned_card = i.turn_on_card('on')
                                 if turned_card:
                                     active_card = i
-                                    Player_T.is_active = False
-                                    Player_T.active_complete = True
+                                    Player_T.turn_complete = True
+
+                    # 选牌
+                    if chosed_card == True:
+                        for i in Bot.hand_cards:
+                            if g_rect(i).collidepoint(event.pos):
+                                chosed_card = i
+                                print(chosed_card.card_id)
+
+                    # 摸牌
+                    if Player_T.can_get == True:
+                        get_after = len(Player_T.hand_cards)
+                        Player_T.get_cards(washed_cards, '大阿卡纳')
+                        if len(Player_T.hand_cards) - get_after == 1:
+                            Player_T.can_get = 'OK'
+                            print('OK')
 
             elif gui == 'overgame':
                 if g_rect(go_back_b).collidepoint(event.pos):
@@ -1157,6 +1306,7 @@ while True:
                     for i in cards.keys():
                         for j in cards[i]:
                             j.is_open = False
+                            j.is_used = False
                     # 洗身份牌
                     cards['ace'] = wash_cards(cards['ace'])
                     # 清除玩家数据

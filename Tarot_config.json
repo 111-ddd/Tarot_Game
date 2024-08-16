@@ -12,8 +12,8 @@
     },
     "cards_min": 4,
     "cards_max": 11,
-    "start_fight": 0,
-    "over_game": 0,
+    "start_fight": 3,
+    "over_game": 4,
     "turn_card_time": [0.8,2],
     "version": 0.1,
     "identity": [

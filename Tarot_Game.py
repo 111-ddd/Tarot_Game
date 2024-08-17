@@ -1163,7 +1163,6 @@ while True:
 
             i.identity_card.x, i.identity_card.y = iden_x, i_deny
             i.identity_card.width, i.identity_card.height = card_size[0] * 2, card_size[1] * 2
-            print(i.identity_card.width, i.identity_card.height)
             i.identity_card.draw()
             iden_x += ww * 0.485
             name_x += ww * 0.485

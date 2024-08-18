@@ -2,6 +2,7 @@ import json
 import os
 import random
 import time
+import sys
 
 import pygame as pg
 from pygame.locals import *
@@ -21,6 +22,7 @@ card_size = (133, 230)
 with open('Tarot_config.json', 'r', encoding='utf-8') as f:
     data = json.load(f)
     music_vol = data['setting']['背景音量']
+    sound_vol = data['setting']['音效音量']
 
 # 身份牌列表
 identity = data['identity']
@@ -92,12 +94,19 @@ for i in range(0, 3):
 font_direvtory = 'Tarot_resource/Font/'
 
 # 载入音乐
-sound_directory = 'Tarot_resource/Music'
-pg.mixer.music.load(sound_directory + '/CalabiYau/' + '内心的炽热.mp3')
+music_directory = 'Tarot_resource/Music'
+pg.mixer.music.load(music_directory + '/CalabiYau/' + '内心的炽热.mp3')
 pg.mixer.music.set_volume(0)
 pg.mixer.music.play(-1)
 pg.mixer.music.pause()
 pg.mixer.music.set_volume(music_vol)
+
+# 载入音效
+sound_directory = music_directory + '/Sound/'
+touch_card_s = pg.mixer.Sound(sound_directory + '碰牌.mp3')
+button_sd = pg.mixer.Sound(sound_directory + '按钮.wav')
+touch_card_s.set_volume(sound_vol)
+button_sd.set_volume(sound_vol)
 
 
 class Text:
@@ -149,6 +158,7 @@ class Player:
             if c.card_types == chose_type and not c in cards['弃牌堆']:
                 rect = g_rect(c)
                 if self.name == 'Bot' or rect.collidepoint(pg.mouse.get_pos()):
+                    touch_card_s.play()
                     self.hand_cards.append(c)
                     cards['弃牌堆'].append(c)
                     print(self.name + '抽取了' + str(c.is_on) + '的' + c.card_id)
@@ -241,13 +251,11 @@ class Card(Button):
     def __init__(self, card_id, card_types, front, points, can_turn=True, is_used=False,
                  effct_ban=False, point_ban=False, is_open=False, is_protected=False,
                  c_x=0, c_y=0, c_width=card_size[0], c_height=card_size[1], is_on=True,
-                 active=False):
+                 is_tower = False):
         super().__init__(front, c_width, c_height, c_x, c_y, None, img_down=front)
         self.card_id = card_id
         self.points = points
-        self.active = active
         self.can_turn = can_turn
-        self.point_ban = points
         self.is_on = is_on
         self.is_used = is_used
         self.card_types = card_types
@@ -255,6 +263,7 @@ class Card(Button):
         self.point_ban = point_ban
         self.is_open = is_open
         self.is_protected = is_protected
+        self.is_tower = is_tower
 
     def turn_on_card(self, status):
         rect = g_rect(self)
@@ -285,28 +294,39 @@ class Card(Button):
         screen.blit(transform_scale(img_show, self.width, self.height), (self.x, self.y))
 
         # 绘制状态
-        ban_img_s = self.width * 0.75
-        ban_img_x, ban_img_y = self.x + self.width * 0.14, self.y + self.height * 0.035
-        ban_text_x, ban_text_y = self.x + self.width * 0.525, self.y + self.height * 0.277
+        ban_img_s = self.width * 0.22
+        tag_x = self.x + self.width - ban_img_s - self.width * 0.02
+        tag_y = self.y + self.height * 0.02
         p_img_width, p_img_height = self.width * 0.22, self.height * 0.165
-        p_img_x, p_img_y = self.x + self.width - p_img_width, self.y
 
         if self.point_ban:
-            p_ban_text = Text(int(fr * 103), 'P', ban_text_x, ban_text_y, color=(0, 0, 0))
-            ban_img = transform_scale(img_ui['禁止.png'], ban_img_s, ban_img_s)
-            p_ban_text.draw()
-            screen.blit(ban_img, (ban_img_x, ban_img_y))
+            ban_img = transform_scale(img_ui['禁点.png'], ban_img_s, ban_img_s)
+            screen.blit(ban_img, (tag_x, tag_y))
+            tag_x -= ban_img_s + self.width * 0.03
 
         if self.effct_ban:
-            e_ban_text = Text(int(fr * 103), 'E', ban_text_x, ban_text_y + self.height * 0.5)
-            ban_img = transform_scale(img_ui['禁止.png'], ban_img_s, ban_img_s)
-            e_ban_text.draw()
-            screen.blit(ban_img, (ban_img_x, ban_img_y + self.height * 0.5))
+            ban_img = transform_scale(img_ui['禁效.png'], ban_img_s, ban_img_s)
+            screen.blit(ban_img, (tag_x, tag_y))
+            tag_x -= ban_img_s + self.width * 0.03
 
         if self.is_protected:
-            protect_img = transform_scale(img_ui['保护.png'], p_img_width, p_img_height)
-            screen.blit(protect_img, (p_img_x, p_img_y))
+            protect_img = transform_scale(img_ui['保护.png'], ban_img_s, ban_img_s)
+            screen.blit(protect_img, (tag_x, tag_y))
+            tag_x -= ban_img_s + self.width * 0.03
 
+        if self.is_tower:
+            tower_img = transform_scale(img_ui['塔.png'], ban_img_s, ban_img_s)
+            screen.blit(tower_img, (tag_x, tag_y))
+            tag_x -= ban_img_s + self.width * 0.03
+
+    def clean_card(self):
+        self.can_turn = True
+        self.is_used = False
+        self.effct_ban = False
+        self.point_ban = False
+        self.is_open = False
+        self.is_protected = False
+        self.is_tower = False
 
 # 创建开局计时器
 start_game = None
@@ -346,12 +366,6 @@ for i in range(0, 3):
         point = j[0:2]
         cards[card_type[i]].append(Card('{}'.format(j), card_type[i],
                                         img_load['{}'.format(j)], point))
-
-# 加载大阿卡纳的主被动属性
-for active_load in cards['大阿卡纳']:
-    c_name_active = active_load.card_id.split('.')[0]
-    if c_name_active in data['active_card']:
-        active_load.active = True
 
 # 加载卡片背面
 back_img = img_rider
@@ -396,6 +410,7 @@ start_gf = False
 chosed_card = None
 chosed_card_m = None
 game_winner = None
+seeing = None
 gf_winner = None
 for i in data['setting'].keys():
     slide_bars_active[SettingBar(ww * 0.9151, wh * 0.0781, ww * 0.0439,
@@ -490,7 +505,7 @@ for i in range(0, 3):
            设置UI
 --------------------------'''
 # 按钮
-sace_cg = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.8419, wh * 0.8724, '确定',
+save_cg = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.8419, wh * 0.8724, '确定',
                  img_on=img_ui['方块按钮1.png'], img_down=img_ui['方块按钮2.png'])
 
 for i in range(0, len(data['setting'])):
@@ -506,12 +521,19 @@ go_back_b = Button(img_ui['方块按钮.png'], ww * 0.15, wh * 0.01,
                    ww * 0.54, wh * 0.82, '返回', img_down=img_ui['方块按钮2.png'],
                    img_on=img_ui['方块按钮1.png'])
 
+'''--------------------------
+           战斗UI
+--------------------------'''
+# 按钮
+see_ok = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.4, wh * 0.49, '看完了',
+                 img_on=img_ui['方块按钮1.png'], img_down=img_ui['方块按钮2.png'])
+
 # 创建窗口
 screen = pg.display.set_mode((ww, wh), flags=RESIZABLE)
 pg.display.set_caption("塔罗对战 by Edwad_过客")
 
 while True:
-    clock.tick(50)
+    clock.tick(60)
 
     # 捕捉窗口变化
     win_size = pg.display.get_surface().get_size()
@@ -526,6 +548,8 @@ while True:
 
     # 刷新音量大小
     pg.mixer.music.set_volume(data['setting']['背景音量'])
+    touch_card_s.set_volume(data['setting']['音效音量'])
+    button_sd.set_volume(data['setting']['音效音量'])
 
     # 绘制基础UI
     if gui == 'home':
@@ -559,15 +583,18 @@ while True:
         screen.blit(bg_setting, (0, 0))
         screen.blit(setting_title, (0, wh * 0.0391))
 
-        for i in slide_bars_active.keys():
-            i.width, i.height, i.x, i.y = ww * 0.9151, wh * 0.0781, ww * 0.0439, wh * 0.2083
-            i.draw()
+        for i in range(0,len(data['setting'])):
+            setting_bar_ob = list(slide_bars_active.keys())[i]
+            setting_bar_ob.width, setting_bar_ob.height, setting_bar_ob.x, setting_bar_ob.y = \
+                (ww * 0.9151, wh * 0.0781, ww * 0.0439,
+                 wh * 0.2083 + i * (wh * 0.0781 + wh * 0.018))
+            setting_bar_ob.draw()
 
         # 按钮
-        sace_cg.width, sace_cg.height, sace_cg.x, sace_cg.y = (
+        save_cg.width, save_cg.height, save_cg.x, save_cg.y = (
             ww * 0.1245, wh * 0.0911, ww * 0.8419, wh * 0.8724)
-        sace_cg.font_size = int(fr * 40)
-        sace_cg.draw()
+        save_cg.font_size = int(fr * 40)
+        save_cg.draw()
 
     elif gui == 'fighting':
         bg_right = transform_scale(img_ui['信息栏.png'], ww * 0.1537, wh)
@@ -616,13 +643,21 @@ while True:
                             if opened_cards.point_ban:
                                 i.points += 0
                             else:
+                                card_p = int(opened_cards.points)
+                                if opened_cards.is_tower:
+                                    if card_p >= 10:
+                                        card_p = int(str(card_p)[1:])
+                                    else:
+                                        card_p = 0
+
                                 if opened_cards.is_on:
-                                    i.points += int(opened_cards.points)
+                                    i.points += card_p
                                 else:
-                                    i.points -= int(opened_cards.points)
+                                    i.points -= card_p
 
                     # 绘制分数板
-                    text_points = Text(int(45 * fr), str(i.points), id_pos[0], id_pos[1])
+                    text_points = Text(int(45 * fr), str(i.points), id_pos[0], id_pos[1],
+                                       font = 'Minecraft.otf')
                     text_points.draw()
                     id_pos[1] += y_differ
 
@@ -767,13 +802,11 @@ while True:
                                                             no_use -= 1
 
                                                     if no_use == 0:
-                                                        i.is_first = False
                                                         i.is_active = False
                                                         i.gg = True
                                                         print(i.name + '结束了')
                                                         for j in names:
                                                             if j != i:
-                                                                j.is_first = True
                                                                 j.is_active = True
                                                         over_game = time.time()
                                                     else:
@@ -901,11 +934,7 @@ while True:
                                                                 skill_ob = enemy
                                                             # 重置对象手牌状态
                                                             for wheel in skill_ob.hand_cards:
-                                                                wheel.is_open = False
-                                                                wheel.is_used = False
-                                                                wheel.is_protected = False
-                                                                wheel.point_ban = False
-                                                                wheel.effct_ban = False
+                                                                wheel.clean_card()
                                                                 cards['弃牌堆'].remove(wheel)
                                                             skill_ob.hand_cards = []
                                                             skill_ob.get_card = False
@@ -921,9 +950,12 @@ while True:
                                                                     i == Player_T and not active_card.is_on):
                                                                 messages = '敌人保一张牌'
                                                                 protect_card = random.choice(Bot.hand_cards)
-                                                                protect_card.is_protected = True
-                                                                active_card.is_protected = True
-                                                                i.skill_complete = True
+                                                                if protect_card.card_id == active_card.card_id:
+                                                                    pass
+                                                                else:
+                                                                    protect_card.is_protected = True
+                                                                    active_card.is_protected = True
+                                                                    i.skill_complete = True
                                                             else:
                                                                 messages = '你保一张牌'
                                                                 if chosed_card_m == None:
@@ -931,10 +963,14 @@ while True:
                                                                 elif chosed_card_m == True:
                                                                     pass
                                                                 else:
-                                                                    chosed_card_m.is_protected = True
-                                                                    active_card.is_protected = True
-                                                                    i.skill_complete = True
-                                                                    chosed_card_m = None
+                                                                    if chosed_card_m != None:
+                                                                        if chosed_card_m.card_id == active_card.card_id:
+                                                                            chosed_card_m = True
+                                                                        else:
+                                                                            chosed_card_m.is_protected = True
+                                                                            active_card.is_protected = True
+                                                                            i.skill_complete = True
+                                                                            chosed_card_m = None
 
                                                         # 倒吊人 弃对面一张牌
                                                         elif c_name == '12':
@@ -1011,19 +1047,54 @@ while True:
                                                                 pass
                                                             i.skill_complete = True
 
+                                                        # 塔 使牌的点数去除十位数.
                                                         elif c_name == '16':
-                                                            if active_card.is_on:
-                                                                pass
+                                                            if (i == Bot and active_card.is_on or
+                                                                    i == Player_T and not active_card.is_on):
+                                                                messages = '敌方选择作用对象'
+                                                                ban_p_card = random.choice(Player_T.hand_cards)
+                                                                if ban_p_card.is_protected:
+                                                                    pass
+                                                                else:
+                                                                    ban_p_card.is_tower = True
+                                                                    i.skill_complete = True
                                                             else:
-                                                                pass
-                                                            i.skill_complete = True
-
+                                                                messages = '你选择作用对象'
+                                                                if chosed_card == None:
+                                                                    chosed_card = True
+                                                                elif chosed_card == True:
+                                                                    pass
+                                                                else:
+                                                                    if chosed_card.is_protected:
+                                                                        chosed_card = True
+                                                                    else:
+                                                                        chosed_card.is_tower = True
+                                                                        i.skill_complete = True
+                                                                        chosed_card = None
+                                                        # 星星 看自己所有手牌
                                                         elif c_name == '17':
-                                                            if active_card.is_on:
-                                                                pass
+                                                            if (i == Bot and active_card.is_on or
+                                                                    i == Player_T and not active_card.is_on):
+                                                                messages = '敌方看自己牌'
+                                                                i.skill_complete = True
                                                             else:
-                                                                pass
-                                                            i.skill_complete = True
+                                                                messages = '你看自己牌'
+                                                                if seeing == None:
+                                                                    card_status = []
+                                                                    for see in Player_T.hand_cards:
+                                                                        card_status.append(see.is_open)
+                                                                        see.is_open = True
+                                                                    seeing = True
+                                                                elif seeing == True:
+                                                                    (see_ok.width, see_ok.height,
+                                                                     see_ok.x, see_ok.y) = (ww * 0.1245, wh * 0.0911,
+                                                                                            ww * 0.4, wh * 0.49)
+                                                                    see_ok.draw()
+                                                                else:
+                                                                    for t_b in range(0, len(card_status)):
+                                                                        Player_T.hand_cards[t_b].is_open = card_status[t_b]
+                                                                    i.skill_complete = True
+                                                                    seeing = None
 
                                                         elif c_name == '18':
                                                             if active_card.is_on:
@@ -1032,12 +1103,31 @@ while True:
                                                                 pass
                                                             i.skill_complete = True
 
+                                                        # 太阳 看对方的所有牌
                                                         elif c_name == '19':
-                                                            if active_card.is_on:
-                                                                pass
+                                                            if (i == Bot and active_card.is_on or
+                                                                    i == Player_T and not active_card.is_on):
+                                                                messages = '敌方看你牌'
+                                                                i.skill_complete = True
                                                             else:
-                                                                pass
-                                                            i.skill_complete = True
+                                                                messages = '你看敌方牌'
+                                                                if seeing == None:
+                                                                    card_status = []
+                                                                    for see in Bot.hand_cards:
+                                                                        card_status.append(see.is_open)
+                                                                        see.is_open = True
+                                                                    seeing = True
+                                                                elif seeing == True:
+                                                                    (see_ok.width, see_ok.height,
+                                                                     see_ok.x, see_ok.y) = (ww * 0.1245, wh * 0.0911,
+                                                                                            ww * 0.4, wh * 0.49)
+                                                                    see_ok.draw()
+                                                                else:
+                                                                    for t_b in range(0, len(card_status)):
+                                                                        Bot.hand_cards[t_b].is_open = card_status[t_b]
+                                                                    i.skill_complete = True
+                                                                    seeing = None
+
 
                                                         elif c_name == '20':
                                                             if (i == Bot and active_card.is_on or
@@ -1087,7 +1177,8 @@ while True:
                                                     # 如果是机器人
                                                     for closed in Bot.hand_cards:
                                                         if not closed.is_open:
-                                                            closed.is_open = not closed.is_open
+                                                            closed.is_open = True
+                                                            touch_card_s.play()
                                                             active_card = closed
                                                             break
                                                     i.turn_complete = True
@@ -1095,14 +1186,24 @@ while True:
                                             # 判定未结束
                                             pass
                                     elif i.is_active and i.gg:
-                                        # 正在处于回合内但手牌已经结束
-                                        i.is_active = False
-                                        i.turn_complete = False
-                                        i.skill_complete = False
-                                        # 将另一个行动回合开启,关闭当前行动回合
-                                        for j in names:
-                                            if j != i:
-                                                j.is_active = True
+                                        # 计算未翻开手牌数量
+                                        no_use = len(i.hand_cards)
+                                        for no_used in i.hand_cards:
+                                            if no_used.is_used:
+                                                no_use -= 1
+
+                                        if no_use == 0:
+                                            i.is_active = False
+                                            i.turn_complete = False
+                                            i.skill_complete = False
+                                            i.gg = True
+                                            print(i.name + '结束了')
+                                            for j in names:
+                                                if j != i:
+                                                    j.is_active = True
+                                            over_game = time.time()
+                                        else:
+                                            i.gg = False
 
         else:
             pass
@@ -1262,18 +1363,16 @@ while True:
     elif gui == 'login':
         pass
 
-    # 更新按钮状态
     for event in pg.event.get():
+        # 更新按钮状态
         for i in button_home:
             i.check_status()
-        sace_cg.check_status()
+        save_cg.check_status()
         go_back_b.check_status()
+        see_ok.check_status()
 
         if event.type == MOUSEBUTTONDOWN:
-            if gui == 'home':
-                pass
-
-            elif gui == 'setting':
+            if gui == 'setting':
                 for i in slide_bars_active.keys():
                     rect = g_rect(i)
                     if rect.collidepoint(event.pos):
@@ -1284,29 +1383,38 @@ while True:
                 # 背景音量键
                 if g_rect(sound_bg).collidepoint(event.pos):
                     data['music_switch'] = not data['music_switch']
+                    button_sd.play()
                     save_config(data)
                     sound_icon(data['music_switch'])
 
                 # 设置键
                 elif g_rect(button_home[2]).collidepoint(event.pos):
+                    button_sd.play()
                     gui = 'setting'
+
+                # 多人模式键
+                elif g_rect(button_home[1]).collidepoint(event.pos):
+                    button_sd.play()
 
                 # 单人模式键
                 elif g_rect(button_home[0]).collidepoint(event.pos):
+                    button_sd.play()
                     gui = 'chose_identity'
                     pg.mixer.music.stop()
-                    pg.mixer.music.load(sound_directory + '/CalabiYau/' + '概率论.mp3')
+                    pg.mixer.music.load(music_directory + '/CalabiYau/' + '概率论.mp3')
                     pg.mixer.music.set_volume(data['setting']['背景音量'])
                     pg.mixer.music.play(-1)
 
             elif gui == 'setting':
-                rect = g_rect(sace_cg)
+                rect = g_rect(save_cg)
                 if rect.collidepoint(event.pos):
+                    button_sd.play()
                     gui = 'home'
 
                 for i in slide_bars_active.keys():
                     rect = g_rect(i)
                     if rect.collidepoint(pg.mouse.get_pos()):
+                        button_sd.play()
                         slide_bars_active[i] = False
 
             elif gui == 'chose_identity':
@@ -1319,6 +1427,7 @@ while True:
                             chose_title2.text = '你抽到了 ' + Player_T.identity_card.card_id.split('.')[0]
                         else:
                             Player_T.identity_chosen = i.turn_on_card('on')
+                            touch_card_s.play()
                             hit_card = i
                             cards['弃牌堆'].append(i)
 
@@ -1331,6 +1440,12 @@ while True:
                     if data['cards_min'] == len(Player_T.hand_cards):
                         start_game = time.time()
                         Player_T.get_card = True
+
+                        # for abc in cards['大阿卡纳']:
+                        #     if abc.card_id == '17星星.png':
+                        #         abc.is_on = True
+                        #         cards['弃牌堆'].append(abc)
+                        #         Player_T.hand_cards.append(abc)
 
                 else:
                     # 猜拳
@@ -1353,6 +1468,7 @@ while True:
                                     if i in Player_T.hand_cards:
                                         turned_card = i.turn_on_card('on')
                                         if turned_card:
+                                            touch_card_s.play()
                                             active_card = i
                                             Player_T.turn_complete = True
                         else:
@@ -1360,6 +1476,7 @@ while True:
                                 if i in Player_T.hand_cards:
                                     turned_card = i.turn_on_card('on')
                                     if turned_card:
+                                        touch_card_s.play()
                                         active_card = i
                                         Player_T.turn_complete = True
 
@@ -1367,12 +1484,14 @@ while True:
                     if chosed_card == True:
                         for i in Bot.hand_cards:
                             if g_rect(i).collidepoint(event.pos):
+                                touch_card_s.play()
                                 chosed_card = i
 
                     # 选自己的牌
                     elif chosed_card_m == True:
                         for i in Player_T.hand_cards:
                             if g_rect(i).collidepoint(event.pos):
+                                touch_card_s.play()
                                 chosed_card_m = i
 
                     # 摸牌
@@ -1382,8 +1501,14 @@ while True:
                         if len(Player_T.hand_cards) - get_after == 1:
                             Player_T.can_get = 'OK'
 
+                    # 看牌
+                    if seeing == True:
+                        if g_rect(see_ok).collidepoint(event.pos):
+                            seeing = False
+
             elif gui == 'overgame':
                 if g_rect(go_back_b).collidepoint(event.pos):
+                    button_sd.play()
                     gui = 'home'
                     # 清除猜拳数据
                     gf_winner = None
@@ -1393,11 +1518,7 @@ while True:
                     cards['弃牌堆'] = []
                     for i in cards.keys():
                         for j in cards[i]:
-                            j.is_open = False
-                            j.is_used = False
-                            j.is_protected = False
-                            j.point_ban = False
-                            j.effct_ban = False
+                            j.clean_card()
                     # 洗身份牌
                     cards['ace'] = wash_cards(cards['ace'])
                     # 清除玩家数据
@@ -1407,6 +1528,7 @@ while True:
                     # 清除游戏状态数据
                     game_winner = None
                     start_game = None
+                    active_card = None
 
         elif event.type == MOUSEMOTION:
             if gui == 'setting':
@@ -1422,9 +1544,10 @@ while True:
                             i.rate = 1
                         else:
                             i.rate = float('{:.2f}'.format(setting_rate / bar_length))
-                        data['setting']['背景音量'] = i.rate
+                        data['setting'][i.text] = i.rate
                         save_config(data)
 
-        if event.type == pg.QUIT:
+        if event.type == QUIT:
             pg.quit()
+            sys.exit()
     pg.display.flip()

@@ -277,6 +277,7 @@ class Card(Button):
         if rect.collidepoint(pg.mouse.get_pos()):
             if (event.type == MOUSEBUTTONUP and
                     self.can_turn and self.is_open == (not turned)):
+                touch_card_s.play()
                 self.is_open = turned
                 return self
         else:
@@ -406,6 +407,7 @@ chose_title2 = Text(80, '', ww * 0.51, wh * 0.25, color=title_chose_color)
 gui = 'home'
 active_card = None
 slide_bars_active = {}
+should_use = None
 start_gf = False
 chosed_card = None
 chosed_card_m = None
@@ -532,6 +534,15 @@ see_ok = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.4, 
 screen = pg.display.set_mode((ww, wh), flags=RESIZABLE)
 pg.display.set_caption("塔罗对战 by Edwad_过客")
 
+# 绘制选择框按钮
+ok_button = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.5, wh * 0.57, '使用',
+            img_on=img_ui['方块按钮1.png'], img_down=img_ui['方块按钮2.png'])
+refuse_button = Button(img_ui['方块按钮.png'], ww * 0.1245, wh * 0.0911, ww * 0.5, wh * 0.58, '不使用',
+            img_on=img_ui['方块按钮1.png'], img_down=img_ui['方块按钮2.png'])
+
+# 选择框文字
+choose_text = Text(int(fr * 40), '此技能为主动技能,你要使用吗?', ww * 0.41, wh * 0.495)
+
 while True:
     clock.tick(60)
 
@@ -622,14 +633,19 @@ while True:
                     cards['弃牌堆'].append(Bot.identity_card)
             else:
                 # 绘制信息栏
-                x, y = ww * 0.8748, wh * 0.0260
+                x, y = ww * 0.8748, wh * 0.05
                 for i in [Bot, Player_T]:
                     i.identity_card.x, i.identity_card.y = x, y
                     i.identity_card.draw()
                     y += wh * 0.5013
 
-                id_pos = [ww * 0.9224, wh * 0.3607]
-                y_differ = wh * 0.4313
+                id_pos = [ww * 0.9224, wh * 0.39]
+                y_differ = wh * 0.425
+
+                # 绘制消息提示栏
+                text_message = Text(int(25 * fr), messages, ww * 0.923, wh * 0.51, color=(255, 0, 0))
+                text_message.draw()
+
                 for i in names:
                     # 绘制用户名称
                     text_id = Text(int(35 * fr), i.name, id_pos[0], id_pos[1])
@@ -692,10 +708,6 @@ while True:
                         j.y = cards_hill_pos[1]
                         j.draw()
                     cards_hill_pos[0] += ww * 0.105
-
-                # 绘制消息提示栏
-                text_message = Text(int(25 * fr), messages, ww * 0.923, wh * 0.49, color=(255, 0, 0))
-                text_message.draw()
 
                 # 机器人拿手牌
                 if Player_T.get_card:
@@ -801,7 +813,7 @@ while True:
                                                         if no_used.is_used:
                                                             no_use -= 1
 
-                                                    if no_use == 0:
+                                                    if no_use == 0 and active_card.card_id != '10命运之轮.png':
                                                         i.is_active = False
                                                         i.gg = True
                                                         print(i.name + '结束了')
@@ -814,13 +826,47 @@ while True:
 
                                                 elif (active_card and
                                                       i.skill_complete == False and
-                                                      active_card.effct_ban == False):
+                                                      active_card.effct_ban == False and
+                                                      active_card.is_used == False):
+                                                    c_name = active_card.card_id[0:2]
                                                     # 判定完毕翻完牌但技能释放中
-                                                    if active_card.is_used == False:
+                                                    if c_name in data['active_card'] and should_use == None:
+                                                        if (i == Bot and active_card.is_on or
+                                                                i == Player_T and not active_card.is_on):
+                                                            should_use = True
+                                                        else:
+                                                            # 绘制选择框背景
+                                                            screen.blit(base_bg, (ww * 0.18, wh * 0.33))
+
+                                                            # 绘制选择框文字
+                                                            tip_text = Text(int(fr * 48), '提示',
+                                                                               ww * 0.415, wh * 0.4)
+                                                            tip_text.draw()
+                                                            choose_text.font_size, choose_text.x, choose_text.y = (
+                                                                int(fr * 40), ww * 0.41, wh* 0.495)
+                                                            choose_text.draw()
+
+                                                            # 更新选择框按钮尺寸
+                                                            ok_button.width, ok_button.height, ok_button.x, ok_button.y = (
+                                                                ww * 0.12, wh * 0.09, ww * 0.28, wh * 0.57)
+                                                            ok_button.font_size = int(fr * 40)
+                                                            ok_button.draw()
+
+                                                            refuse_button.width, refuse_button.height, refuse_button.x, refuse_button.y = (
+                                                                ww * 0.12, wh * 0.09, ww * 0.44, wh * 0.57)
+                                                            refuse_button.font_size = int(fr * 40)
+                                                            refuse_button.draw()
+
+                                                    elif should_use == False:
+                                                        # 是主动技能且选择不开启
+                                                        i.skill_complete = True
+                                                        should_use = None
+
+                                                    elif c_name not in data['active_card'] or should_use:
+                                                        should_use = None
                                                         for ey in names:
                                                             if ey != i:
                                                                 enemy = ey
-                                                        c_name = active_card.card_id[0:2]
 
                                                         # 愚者即赢
                                                         if c_name == '00':
@@ -904,12 +950,32 @@ while True:
                                                                 pass
                                                             i.skill_complete = True
 
+                                                        # 战车 立刻翻开一张手牌,且必为正位
                                                         elif c_name == '07':
-                                                            if active_card.is_on:
-                                                                pass
+                                                            if (i == Bot and active_card.is_on or
+                                                                    i == Player_T and not active_card.is_on):
+                                                                messages = '敌人翻一张牌'
+                                                                must_on = random.choice(Bot.hand_cards)
+                                                                if must_on.is_protected:
+                                                                    pass
+                                                                else:
+                                                                    must_on.is_on = True
+                                                                    must_on.is_open = True
+                                                                    i.skill_complete = True
                                                             else:
-                                                                pass
-                                                            i.skill_complete = True
+                                                                messages = '你翻一张牌'
+                                                                if chosed_card_m == None:
+                                                                    chosed_card_m = True
+                                                                elif chosed_card_m == True:
+                                                                    pass
+                                                                else:
+                                                                    if chosed_card_m.is_protected:
+                                                                        chosed_card_m = True
+                                                                    else:
+                                                                        chosed_card_m.is_on = True
+                                                                        chosed_card_m.is_open = True
+                                                                        i.skill_complete = True
+                                                                        chosed_card_m = None
 
                                                         elif c_name == '08':
                                                             if active_card.is_on:
@@ -1012,7 +1078,7 @@ while True:
                                                         elif c_name == '13':
                                                             if (i == Bot and active_card.is_on or
                                                                     i == Player_T and not active_card.is_on):
-                                                                messages = '敌人禁你一张牌技能'
+                                                                messages = '敌方禁一张牌技能'
                                                                 ban_p_card = random.choice(Player_T.hand_cards)
                                                                 if ban_p_card.is_protected:
                                                                     pass
@@ -1020,7 +1086,7 @@ while True:
                                                                     ban_p_card.effct_ban = True
                                                                     i.skill_complete = True
                                                             else:
-                                                                messages = '你禁对方一张牌技能'
+                                                                messages = '禁敌方一张牌技能'
                                                                 if chosed_card == None:
                                                                     chosed_card = True
                                                                 elif chosed_card == True:
@@ -1156,14 +1222,14 @@ while True:
 
                                                         # 世界 反转所有牌
                                                         elif c_name == '21':
-                                                            if active_card.is_on:
-                                                                pass
-                                                            else:
-                                                                pass
+                                                            messages = '正在翻转手牌'
+                                                            for world_turn in i.hand_cards:
+                                                                if world_turn.is_protected:
+                                                                    pass
+                                                                else:
+                                                                    world_turn.is_on = not world_turn.is_on
                                                             i.skill_complete = True
 
-                                                        else:
-                                                            pass
                                                 elif active_card.effct_ban:
                                                     # 判定完翻完牌但牌技能被禁
                                                     i.skill_complete = True
@@ -1192,7 +1258,7 @@ while True:
                                             if no_used.is_used:
                                                 no_use -= 1
 
-                                        if no_use == 0:
+                                        if no_use == 0 and active_card.card_id != '10命运之轮.png':
                                             i.is_active = False
                                             i.turn_complete = False
                                             i.skill_complete = False
@@ -1370,6 +1436,8 @@ while True:
         save_cg.check_status()
         go_back_b.check_status()
         see_ok.check_status()
+        ok_button.check_status()
+        refuse_button.check_status()
 
         if event.type == MOUSEBUTTONDOWN:
             if gui == 'setting':
@@ -1427,7 +1495,6 @@ while True:
                             chose_title2.text = '你抽到了 ' + Player_T.identity_card.card_id.split('.')[0]
                         else:
                             Player_T.identity_chosen = i.turn_on_card('on')
-                            touch_card_s.play()
                             hit_card = i
                             cards['弃牌堆'].append(i)
 
@@ -1441,11 +1508,11 @@ while True:
                         start_game = time.time()
                         Player_T.get_card = True
 
-                        # for abc in cards['大阿卡纳']:
-                        #     if abc.card_id == '17星星.png':
-                        #         abc.is_on = True
-                        #         cards['弃牌堆'].append(abc)
-                        #         Player_T.hand_cards.append(abc)
+                        for abc in cards['大阿卡纳']:
+                            if abc.card_id == '21世界.png':
+                                abc.is_on = True
+                                cards['弃牌堆'].append(abc)
+                                Player_T.hand_cards.append(abc)
 
                 else:
                     # 猜拳
@@ -1468,7 +1535,6 @@ while True:
                                     if i in Player_T.hand_cards:
                                         turned_card = i.turn_on_card('on')
                                         if turned_card:
-                                            touch_card_s.play()
                                             active_card = i
                                             Player_T.turn_complete = True
                         else:
@@ -1476,7 +1542,6 @@ while True:
                                 if i in Player_T.hand_cards:
                                     turned_card = i.turn_on_card('on')
                                     if turned_card:
-                                        touch_card_s.play()
                                         active_card = i
                                         Player_T.turn_complete = True
 
@@ -1505,6 +1570,16 @@ while True:
                     if seeing == True:
                         if g_rect(see_ok).collidepoint(event.pos):
                             seeing = False
+
+                    # 主动技能发动
+                    if should_use == None:
+                        b_l = [ok_button, refuse_button]
+                        for s_u in b_l:
+                            if g_rect(s_u).collidepoint(event.pos):
+                                if s_u == b_l[0]:
+                                    should_use = True
+                                else:
+                                    should_use = False
 
             elif gui == 'overgame':
                 if g_rect(go_back_b).collidepoint(event.pos):
